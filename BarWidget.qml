@@ -40,6 +40,21 @@ BarWidget {
   // is disabled or reloaded: [{ item, prop, edge }].
   property var touched: []
 
+  // Section targets found by the scene-graph fallback, cached between applies,
+  // and the flag that folds the edge and center moves of one step into one pass.
+  property var targets: []
+  property bool applyQueued: false
+
+  function scheduleApply() {
+    if (root.applyQueued) return
+    root.applyQueued = true
+    Qt.callLater(root.runApply)
+  }
+
+  function runApply() {
+    root.applyQueued = false
+    root.apply()
+  }
 
   function clampInt(value, lo, hi) {
     var n = Math.round(Number(value))
@@ -135,8 +150,18 @@ BarWidget {
   }
 
   // The fallback. The section Loaders move with the bar, so find them wherever
-  // they are in this window.
+  // they are in this window and remember them: the walk is the expensive part
+  // and the bar's shape only changes when it is rebuilt, which destroys the old
+  // Loaders and drops the cache. The cache is re-validated on every use, and
+  // dropped whenever the bar host itself changes.
   function sceneSectionTargets() {
+    var cached = root.targets
+    if (cached.length) {
+      for (var v = 0; v < cached.length; v++) {
+        if (!cached[v].list || !cached[v].list.parent || !cached[v].list.item) { cached = []; break }
+      }
+      if (cached.length) return cached
+    }
     var top = root
     while (top.parent) top = top.parent
     var found = [], queue = [top], seen = []
@@ -148,6 +173,7 @@ BarWidget {
       var kids = n.children
       if (kids) for (var c = 0; c < kids.length; c++) queue.push(kids[c])
     }
+    root.targets = found
     return found
   }
 
