@@ -66,6 +66,12 @@ Sources: [LG on Screen Shift and the OLED care suite](https://www.reviewed.com/t
 Requires Omarchy 4.0.2 or newer (the plugin shell) with the built-in bar or an
 unmodified clone of it.
 
+The bar names its sections through the `Bar` object it hands to its own widgets.
+A third-party widget only gets a `PluginBarApi` facade since Omarchy 4.0.3-ish,
+which has no `moduleSlots`, so the widget falls back to finding the section
+Loaders in the scene graph when the slots are not there. Both paths are in
+`BarWidget.qml` (`sectionTargets()`), so the plugin works installed either way.
+
 ```sh
 omarchy plugin add https://github.com/evindor/omarchy-pixel-shift.git --enable
 ```
@@ -117,6 +123,10 @@ was. Nothing is written anywhere except the plugin's own entry in
   lists and its centered module). A third-party full bar, or a clone with a
   changed layout, is left alone: the plugin finds nothing to move and does
   nothing.
+- With a `centerAnchor`, the bar pins the anchored module's *slot*, not the list
+  around it. That slot is only reachable when the bar hands over its
+  `moduleSlots` — which it does to its own bar, not to a plugin — so in the
+  scene-graph fallback only the section lists themselves are moved.
 - No external dependencies, no processes, no network, no sudo. Like every
   Omarchy plugin it runs unsandboxed inside your shell with your permissions.
 

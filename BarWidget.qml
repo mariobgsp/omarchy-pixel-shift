@@ -40,6 +40,7 @@ BarWidget {
   // is disabled or reloaded: [{ item, prop, edge }].
   property var touched: []
 
+
   function clampInt(value, lo, hi) {
     var n = Math.round(Number(value))
     return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo
@@ -108,6 +109,48 @@ BarWidget {
     return list && list.item === row && typeof list.region === "string" ? list : null
   }
 
+  // What the bar pins to the screen: one entry per section list, plus the
+  // anchored center slot when the bar has a centerAnchor (that slot, not the
+  // list around it, is what the bar pins to the middle of the screen).
+  //
+  // The built-in bar is handed the Bar itself and names its sections through
+  // `moduleSlots`. A third-party widget only gets a PluginBarApi facade (no
+  // `moduleSlots`) from Omarchy 4.0.3 on, so fall back to walking the scene
+  // graph for the section Loaders, which carry their name in `region`.
+  function sectionTargets() {
+    var slots = root.bar ? root.bar.moduleSlots : null // qmllint disable missing-property
+    if (Array.isArray(slots) && slots.length) {
+      var out = [], seen = []
+      for (var i = 0; i < slots.length; i++) {
+        var slot = slots[i]
+        var list = sectionList(slot)
+        if (list && seen.indexOf(list) === -1) {
+          seen.push(list)
+          out.push({ list: list, anchored: slot.region === "center" && slot.anchors.centerIn ? slot : null })
+        }
+      }
+      if (out.length) return out
+    }
+    return sceneSectionTargets()
+  }
+
+  // The fallback. The section Loaders move with the bar, so find them wherever
+  // they are in this window.
+  function sceneSectionTargets() {
+    var top = root
+    while (top.parent) top = top.parent
+    var found = [], queue = [top], seen = []
+    for (var guard = 0; queue.length && guard < 2000; guard++) {
+      var n = queue.shift()
+      if (!n || seen.indexOf(n) !== -1) continue
+      seen.push(n)
+      if (typeof n.region === "string" && n.item) found.push({ list: n, anchored: n.anchors.centerIn ? n : null })
+      var kids = n.children
+      if (kids) for (var c = 0; c < kids.length; c++) queue.push(kids[c])
+    }
+    return found
+  }
+
   function poke(item, prop, value, edge) {
     if (item.anchors[prop] === value) return
     item.anchors[prop] = value
@@ -118,25 +161,20 @@ BarWidget {
   }
 
   function apply() {
-    // The base class types `bar` as a bare QtObject; a bar without slots is
-    // one this plugin leaves alone.
-    var slots = root.bar ? root.bar.moduleSlots : null // qmllint disable missing-property
-    if (!Array.isArray(slots)) return
+    var targets = sectionTargets()
+    if (!targets.length) return
     var edge = root.edgeBase + root.edgeOffset
     var centerProp = root.vertical ? "verticalCenterOffset" : "horizontalCenterOffset"
-    var seen = []
-    for (var i = 0; i < slots.length; i++) {
-      var slot = slots[i]
-      var list = sectionList(slot)
-      if (list && seen.indexOf(list) === -1) {
-        seen.push(list)
-        if (list.region === "left") poke(list, root.vertical ? "topMargin" : "leftMargin", edge, true)
-        else if (list.region === "right") poke(list, root.vertical ? "bottomMargin" : "rightMargin", edge, true)
-        else if (list.region === "center" && list.anchors.centerIn) poke(list, centerProp, root.centerOffset, false)
-      }
+    for (var i = 0; i < targets.length; i++) {
+      var list = targets[i].list
+      if (!list) continue
+      if (list.region === "left") poke(list, root.vertical ? "topMargin" : "leftMargin", edge, true)
+      else if (list.region === "right") poke(list, root.vertical ? "bottomMargin" : "rightMargin", edge, true)
+      else if (list.region === "center" && list.anchors.centerIn) poke(list, centerProp, root.centerOffset, false)
       // With a center anchor set, the anchored module's slot is what the bar
       // pins to the middle of the screen; the lists beside it follow it.
-      if (slot.region === "center" && slot.anchors.centerIn) poke(slot, centerProp, root.centerOffset, false)
+      var anchored = targets[i].anchored
+      if (anchored && anchored !== list && anchored.anchors.centerIn) poke(anchored, centerProp, root.centerOffset, false)
     }
   }
 
